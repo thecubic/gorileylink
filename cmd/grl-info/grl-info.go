@@ -37,6 +37,9 @@ func main() {
 			if adv.LocalName() == "RileyLink" {
 				log.Printf("found a RileyLink: %v", adv.Address().String())
 			}
+			if adv.LocalName() == "KamilLink" {
+				log.Printf("found a KamilLink: %v", adv.Address().String())
+			}
 		}
 		return adv.Address().String() == *rileylink
 	}
