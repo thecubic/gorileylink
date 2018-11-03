@@ -19,17 +19,20 @@ var (
 
 // ConnectedRileyLink represents a BLE connection to a rileylink
 type ConnectedRileyLink struct {
-	client        ble.Client
-	batterySvc    *ble.Service
-	batteryChr    *ble.Characteristic
-	rileyLinkSvc  *ble.Service
-	dataChr       *ble.Characteristic
+	client       ble.Client
+	batterySvc   *ble.Service
+	batteryChr   *ble.Characteristic
+	rileyLinkSvc *ble.Service
+	dataChr      *ble.Characteristic
+	// notifier
 	respCountChr  *ble.Characteristic
 	timerTickChr  *ble.Characteristic
 	customNameChr *ble.Characteristic
 	versionChr    *ble.Characteristic
 	ledModeChr    *ble.Characteristic
 }
+
+// on respCountChr notification, dataChr should be read out
 
 // AttachBTLE creates a connection descriptor for a rileylink based on input
 // of a legitimate BLE-layer connected device.  It will fail if you give it
@@ -127,7 +130,7 @@ func (crl *ConnectedRileyLink) BatteryLevel() (int, error) {
 	return int(data[0]), nil
 }
 
-func (crl *ConnectedRileyLink) CustomName() (string, error) {
+func (crl *ConnectedRileyLink) GetCustomName() (string, error) {
 	var (
 		data []byte
 		err  error
@@ -137,6 +140,37 @@ func (crl *ConnectedRileyLink) CustomName() (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func (crl *ConnectedRileyLink) SetCustomName(newname string) error {
+	var (
+		data []byte
+		err  error
+	)
+	data = []byte(newname)
+	err = crl.client.WriteCharacteristic(crl.customNameChr, data, false)
+	return err
+}
+
+func (crl *ConnectedRileyLink) SetLEDMode(mode LEDMode) error {
+	var (
+		err error
+	)
+	err = crl.client.WriteCharacteristic(crl.ledModeChr, []byte{byte(mode)}, false)
+	return err
+}
+
+func (crl *ConnectedRileyLink) GetLEDMode() (LEDMode, error) {
+	var (
+		err  error
+		mode LEDMode
+		data []byte
+	)
+	data, err = crl.client.ReadCharacteristic(crl.ledModeChr)
+	if err == nil {
+		mode = LEDMode(data[0])
+	}
+	return mode, err
 }
 
 func (crl *ConnectedRileyLink) Version() (string, error) {
