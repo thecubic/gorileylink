@@ -3,13 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/currantlabs/ble"
 	"github.com/currantlabs/ble/linux"
 	"github.com/thecubic/gorileylink"
 	"golang.org/x/net/context"
-	"log"
-	"sync"
-	"time"
 )
 
 var (
@@ -22,6 +24,7 @@ func main() {
 	if len(*rileylink) == 0 {
 		log.Fatalf("must pass rileylink")
 	}
+	rladdress := strings.ToLower(*rileylink)
 	var wg sync.WaitGroup
 	d, err := linux.NewDevice()
 	if err != nil {
@@ -33,15 +36,7 @@ func main() {
 
 	log.Printf("connecting to %v", *rileylink)
 	filter := func(adv ble.Advertisement) bool {
-		if len(adv.LocalName()) > 0 {
-			if adv.LocalName() == "RileyLink" {
-				log.Printf("found a RileyLink: %v", adv.Address().String())
-			}
-			if adv.LocalName() == "KamilLink" {
-				log.Printf("found a KamilLink: %v", adv.Address().String())
-			}
-		}
-		return adv.Address().String() == *rileylink
+		return adv.Address().String() == rladdress
 	}
 	blec, err := ble.Connect(ctx, filter)
 	if err != nil {
@@ -67,34 +62,24 @@ func main() {
 		batteryLevel int
 		customName   string
 		version      string
-		ledMode      gorileylink.LEDMode
 	)
-
-	fmt.Printf("Inspecting %v\n", *rileylink)
-
-	customName, err = rl.GetCustomName()
-	if err != nil {
-		fmt.Printf("couldn't get custom name: %v\n")
-	}
-	fmt.Printf("  Custom Name: %v\n", customName)
 
 	batteryLevel, err = rl.BatteryLevel()
 	if err != nil {
-		fmt.Printf("couldn't get battery level: %v\n")
+		fmt.Printf("couldn't get battery level: %v\n", err)
 	}
-	fmt.Printf("  Battery Level: %v%%\n", batteryLevel)
+
+	customName, err = rl.GetCustomName()
+	if err != nil {
+		fmt.Printf("couldn't get custom name: %v\n", err)
+	}
 
 	version, err = rl.Version()
 	if err != nil {
-		fmt.Printf("couldn't get version: %v\n")
+		fmt.Printf("couldn't get version: %v\n", err)
 	}
-	fmt.Printf("  Firmware Version: %v\n", version)
 
-	ledMode, err = rl.GetLEDMode()
-	if err != nil {
-		fmt.Printf("couldn't get LED Mode: %v\n")
-	}
-	fmt.Printf("  LED Mode: %v\n", ledMode)
+	fmt.Printf("%v: %v %v %v%%\n", rladdress, customName, version, batteryLevel)
 
 	blec.CancelConnection()
 }
