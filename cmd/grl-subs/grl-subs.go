@@ -1,6 +1,5 @@
-// grl-info: display name, BLE FW version, battery level of RileyLink
-// e.g. ./grl-info aa:bb:cc:dd:ee:ff
-// e.g. ./grl-info DaveyLink
+// grl-subs: WIP: buildup of subscription-based GATT RPC channel
+// nope, it does not work yet
 
 package main
 
@@ -26,16 +25,13 @@ var (
 	nameoraddress string
 	err           error
 	rileylink     *gorileylink.ConnectedRileyLink
-	batteryLevel  int
-	customName    string
-	version       string
 )
 
 func main() {
 	flag.Parse()
 	nameoraddress = flag.Arg(0)
 	if nameoraddress == "" {
-		fmt.Println("usage: grl-info <address-or-name>")
+		fmt.Println("usage: grl-subs <address-or-name>")
 		return
 	}
 
@@ -60,23 +56,14 @@ func main() {
 	defer wg.Wait()
 	// end boilerplate connect to rileylink
 
-	batteryLevel, err = rileylink.BatteryLevel()
-	if err != nil {
-		fmt.Printf("couldn't get battery level: %v\n", err)
-	}
+	fmt.Printf("connected: %v\n", nameoraddress)
 
-	customName, err = rileylink.GetCustomName()
-	if err != nil {
-		fmt.Printf("couldn't get custom name: %v\n", err)
-	}
+	err = rileylink.NotifySubscribe()
 
-	version, err = rileylink.Version()
-	if err != nil {
-		fmt.Printf("couldn't get version: %v\n", err)
-	}
-
-	fmt.Printf("%v @ %v: %v %v %v%%\n", nameoraddress, blec.Address().String(), customName, version, batteryLevel)
-
-	// disconnect from rileylink
+	fmt.Printf("subscribed -> %v\n", err)
+	// err = rileylink.GetVersion()
+	// fmt.Printf("GetVersion() -> %v\n", err)
+	rileylink.GetStatistics()
+	time.Sleep(10 * time.Second)
 	blec.CancelConnection()
 }
