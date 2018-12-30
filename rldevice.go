@@ -8,20 +8,48 @@ import (
 type LEDMode byte
 
 const (
-	// LEDModeOff turns diag LEDs off
-	LEDModeOff LEDMode = 0x00
-	// LEDModeOn turns diag LEDs on
-	LEDModeOn LEDMode = 0x01
-	// LEDModeAuto ???
-	LEDModeAuto LEDMode = 0x02
+	// LEDOff turns diag LEDs off
+	LEDOff LEDMode = 0x00
+	// LEDOn turns diag LEDs on
+	LEDOn LEDMode = 0x01
+	// LEDAuto ???
+	LEDAuto LEDMode = 0x02
 )
 
+func (ledm LEDMode) String() string {
+	switch ledm {
+	case LEDOff:
+		return "LEDOff"
+	case LEDOn:
+		return "LEDOn"
+	case LEDAuto:
+		return "LEDAuto"
+	default:
+		return "LEDModeUNKNOWN"
+	}
+}
+
+// LEDColor is the literal type of the choice of LED
+// Valid for CC LEDs for sure, BLE LEDs idk
 type LEDColor byte
 
 const (
+	// LEDGreen is Green, really zeroth
 	LEDGreen LEDColor = 0x00
-	LEDBlue  LEDColor = 0x01
+	// LEDBlue is Blue, really first
+	LEDBlue LEDColor = 0x01
 )
+
+func (ledc LEDColor) String() string {
+	switch ledc {
+	case LEDGreen:
+		return "LEDGreen"
+	case LEDBlue:
+		return "LEDBlue"
+	default:
+		return "LedColorUNKNOWN"
+	}
+}
 
 // RileyLinkCommand is the literal type of a device command
 type RileyLinkCommand byte
@@ -57,22 +85,25 @@ const (
 )
 
 func (rlr RileyLinkCCResponseType) String() string {
-	if rlr == RLRRecvTimeout {
+	switch rlr {
+	case RLRRecvTimeout:
 		return "RLRRecvTimeout"
-	} else if rlr == RLRInterrupted {
+	case RLRInterrupted:
 		return "RLRInterrupted"
-	} else if rlr == RLRZeroData {
+	case RLRZeroData:
 		return "RLRZeroData"
-	} else if rlr == RLRSuccess {
+	case RLRSuccess:
 		return "RLRSuccess"
-	} else if rlr == RLRInvalidParam {
+	case RLRInvalidParam:
 		return "RLRInvalidParam"
-	} else if rlr == RLRUnknownCommand {
+	case RLRUnknownCommand:
 		return "RLRUnknownCommand"
+	default:
+		return "RileyLinkCCResponseTypeUNKNOWN"
 	}
-	return "RLRUnknown"
 }
 
+// RileyLinkPacketChannel represents the internal channel type
 type RileyLinkPacketChannel byte
 
 const (
@@ -80,8 +111,9 @@ const (
 	RLPCPUMP RileyLinkPacketChannel = 0x02
 )
 
-// RileyLinkStatistics represents a statistics pull event
+// RileyLinkStatistics represents a concrete statistics pull event
 type RileyLinkStatistics struct {
+	Collected         time.Time
 	Uptime            time.Duration
 	RecvOverflows     uint16
 	RecvFifoOverflows uint16

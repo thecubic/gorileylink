@@ -8,9 +8,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/currantlabs/ble"
 	"github.com/currantlabs/ble/linux"
@@ -20,6 +21,7 @@ import (
 
 var (
 	timeout         = flag.Duration("timeout", 10*time.Second, "timeout")
+	debug           = flag.Bool("debug", false, "enable debugging messages")
 	wg              sync.WaitGroup
 	hci             *linux.Device
 	ctx             context.Context
@@ -32,6 +34,13 @@ var (
 
 func main() {
 	flag.Parse()
+
+	if *debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+
 	nameoraddress = flag.Arg(0)
 	if nameoraddress == "" {
 		fmt.Println("usage: grl-leds <address-or-name> [off/on/auto]")
@@ -43,12 +52,26 @@ func main() {
 	hci, ctx = gorileylink.OpenBLE(*timeout)
 	blec, err = gorileylink.ConnectNameOrAddress(ctx, nameoraddress)
 	if err != nil {
-		log.Fatalf("couldn't connect to %v: %v", nameoraddress, err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+		}).Fatal("connection failed")
+	} else {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+		}).Debug("connection succeeded")
 	}
 
 	rileylink, err = gorileylink.AttachBTLE(blec)
 	if err != nil {
-		log.Fatalf("couldn't bind %v as RileyLink: %v", nameoraddress, err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+		}).Fatal("couldn't bind connected device as RileyLink")
+	} else {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+		}).Debug("bind as RileyLink succeeded")
 	}
 
 	// launch a goroutine to wrap BLE disconnection for a clean exit
@@ -57,30 +80,50 @@ func main() {
 		<-blec.Disconnected()
 	}()
 	wg.Add(1)
+	// this will delay program exit until cleanly disconnected.
+	// since this is probably Bluetooth-API-over-IPC, not doing
+	// this may persist undesired HCI state
 	defer wg.Wait()
 	// end boilerplate connect to rileylink
 
 	if desiredledstate == "on" {
-		err = rileylink.SetLEDMode(gorileylink.LEDModeOn)
+		err = rileylink.SetLEDMode(gorileylink.LEDOn)
 	} else if desiredledstate == "off" {
-		err = rileylink.SetLEDMode(gorileylink.LEDModeOff)
+		err = rileylink.SetLEDMode(gorileylink.LEDOff)
 	} else if desiredledstate == "auto" {
-		err = rileylink.SetLEDMode(gorileylink.LEDModeAuto)
+		err = rileylink.SetLEDMode(gorileylink.LEDAuto)
 	}
 	if err != nil {
-		fmt.Printf("error in setting LED Mode: %v\n", err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+			"desired":   desiredledstate,
+		}).Fatal("Set LED Mode Error")
 	}
 
 	ledmode, err := rileylink.GetLEDMode()
 	if err != nil {
-		fmt.Printf("couldn't get LED Mode: %v\n", err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+		}).Fatal("Get LED Mode Error")
 	}
-	if ledmode == gorileylink.LEDModeOn {
-		fmt.Printf("%v: LED Mode: on\n", nameoraddress)
-	} else if ledmode == gorileylink.LEDModeOff {
-		fmt.Printf("%v: LED Mode: off\n", nameoraddress)
-	} else if ledmode == gorileylink.LEDModeAuto {
-		fmt.Printf("%v: LED Mode: auto\n", nameoraddress)
+
+	if ledmode == gorileylink.LEDOn {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"leds":      "on",
+		}).Info("LED Mode")
+	} else if ledmode == gorileylink.LEDOff {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"leds":      "off",
+		}).Info("LED Mode")
+	} else if ledmode == gorileylink.LEDAuto {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"leds":      "auto",
+		}).Info("LED Mode")
 	}
 
 	// disconnect from rileylink

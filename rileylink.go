@@ -13,12 +13,11 @@ import (
 
 // ConnectedRileyLink represents a BLE connection to a rileylink
 type ConnectedRileyLink struct {
-	client       ble.Client
-	batterySvc   *ble.Service
-	batteryChr   *ble.Characteristic
-	rileyLinkSvc *ble.Service
-	dataChr      *ble.Characteristic
-	// notifier
+	client              ble.Client
+	batterySvc          *ble.Service
+	batteryChr          *ble.Characteristic
+	rileyLinkSvc        *ble.Service
+	dataChr             *ble.Characteristic
 	respCountChr        *ble.Characteristic
 	respCountClientDesc *ble.Descriptor
 	timerTickChr        *ble.Characteristic
@@ -166,7 +165,7 @@ func (crl *ConnectedRileyLink) notifyRespCallback(dumpval []byte) {
 }
 
 // BatteryLevel [BLE] retrieves an approximated battery percentage from the device
-func (crl *ConnectedRileyLink) BatteryLevel() (int, error) {
+func (crl *ConnectedRileyLink) GetBatteryLevel() (int, error) {
 	var (
 		data []byte
 		err  error
@@ -226,7 +225,7 @@ func (crl *ConnectedRileyLink) SetLEDMode(mode LEDMode) error {
 }
 
 // Version [BLE] returns the BLE firmware revision on the device
-func (crl *ConnectedRileyLink) Version() (string, error) {
+func (crl *ConnectedRileyLink) GetBLEVersion() (string, error) {
 	var (
 		data []byte
 		err  error
@@ -425,6 +424,7 @@ func (crl *ConnectedRileyLink) GetStatistics() (*RileyLinkStatistics, error) {
 		return nil, fmt.Errorf("Bad result: %v", response.result)
 	}
 	return &RileyLinkStatistics{
+		time.Now(),
 		time.Duration(binary.BigEndian.Uint32(response.payload[0:4])) * time.Millisecond,
 		binary.BigEndian.Uint16(response.payload[4:6]),
 		binary.BigEndian.Uint16(response.payload[6:8]),

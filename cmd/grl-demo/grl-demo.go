@@ -5,9 +5,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"os"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/currantlabs/ble"
 	"github.com/currantlabs/ble/linux"
@@ -17,6 +19,7 @@ import (
 
 var (
 	timeout       = flag.Duration("timeout", 10*time.Second, "timeout")
+	debug         = flag.Bool("debug", false, "enable debugging messages")
 	wg            sync.WaitGroup
 	hci           *linux.Device
 	ctx           context.Context
@@ -25,27 +28,51 @@ var (
 	err           error
 	rileylink     *gorileylink.ConnectedRileyLink
 	byteme        []byte
+	ok            bool
+	batteryLevel  int
+	customName    string
+	bleversion    string
 )
 
 func main() {
-	var ok bool
 	flag.Parse()
+
+	if *debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+
 	nameoraddress = flag.Arg(0)
 	if nameoraddress == "" {
 		fmt.Println("usage: grl-subs <address-or-name>")
-		return
+		os.Exit(1)
 	}
 
 	// boilerplate connect to rileylink
 	hci, ctx = gorileylink.OpenBLE(*timeout)
 	blec, err = gorileylink.ConnectNameOrAddress(ctx, nameoraddress)
 	if err != nil {
-		log.Fatalf("couldn't connect to %v: %v", nameoraddress, err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+		}).Fatal("connection failed")
+	} else {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+		}).Debug("connection succeeded")
 	}
 
 	rileylink, err = gorileylink.AttachBTLE(blec)
 	if err != nil {
-		log.Fatalf("couldn't bind %v as RileyLink: %v", nameoraddress, err)
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+			"err":       err,
+		}).Fatal("couldn't bind connected device as RileyLink")
+	} else {
+		log.WithFields(log.Fields{
+			"rileylink": nameoraddress,
+		}).Debug("bind as RileyLink succeeded")
 	}
 
 	// launch a goroutine to wrap BLE disconnection for a clean exit
@@ -54,72 +81,144 @@ func main() {
 		<-blec.Disconnected()
 	}()
 	wg.Add(1)
+	// this will delay program exit until cleanly disconnected.
+	// since this is probably Bluetooth-API-over-IPC, not doing
+	// this may persist undesired HCI state
 	defer wg.Wait()
 	// end boilerplate connect to rileylink
 
 	err = rileylink.NotifySubscribe()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("BLE Subscription Failed")
+	} else {
+		log.Debug("BLE Subscription Successful")
+	}
+
+	// BLE methods
+
+	batteryLevel, err = rileylink.GetBatteryLevel()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Battery Level Error")
+	} else {
+		log.WithFields(log.Fields{
+			"batteryLevel": batteryLevel,
+		}).Info("Battery Level")
+	}
+
+	customName, err = rileylink.GetCustomName()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Custom Name Error")
+	} else {
+		log.WithFields(log.Fields{
+			"customName": customName,
+		}).Info("Custom Name")
+	}
+
+	bleversion, err = rileylink.GetBLEVersion()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("BLE Version Error")
+	} else {
+		log.WithFields(log.Fields{
+			"bleversion": bleversion,
+		}).Info("BLE Version")
+	}
+
+	// CC methods
 
 	ok, err = rileylink.GetState()
 	if ok {
-		fmt.Println("State: OK")
+		log.Info("State: OK")
 	} else {
-		fmt.Printf("State Bad: %v\n", err)
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("State: Bad")
 	}
 	radioversion, err := rileylink.GetRadioVersion()
 	if err != nil {
-		fmt.Printf("Radio Version Err: %v\n", err)
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Radio Version Error")
 	} else {
-		fmt.Printf("Radio Version: %v\n", radioversion)
+		log.WithFields(log.Fields{
+			"radioversion": radioversion,
+		}).Info("Radio Version")
 	}
 
 	stats, err := rileylink.GetStatistics()
 	if err != nil {
-		fmt.Printf("GetStatistics Err: %v\n", err)
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Error("Statistics Error")
 	} else {
-		fmt.Printf("Statistics:\n"+
-			"  Uptime: %v\n"+
-			"  RecvOverflows: %v\n"+
-			"  RecvFifoOverlows: %v\n"+
-			"  PacketsRecv: %v\n"+
-			"  PacketsXmit: %v\n"+
-			"  CRCFailures: %v\n"+
-			"  SPISyncFailures: %v\n",
-			stats.Uptime,
-			stats.RecvOverflows,
-			stats.RecvFifoOverflows,
-			stats.PacketsRecv,
-			stats.PacketsXmit,
-			stats.CRCFailures,
-			stats.SPISyncFailures)
+		log.WithFields(log.Fields{
+			"collected":         stats.Collected,
+			"uptime":            stats.Uptime,
+			"recvoverflows":     stats.RecvOverflows,
+			"recvfifooverflows": stats.RecvFifoOverflows,
+			"packetsrecv":       stats.PacketsRecv,
+			"packetsxmit":       stats.PacketsXmit,
+			"crcfails":          stats.CRCFailures,
+			"spisyncfails":      stats.SPISyncFailures,
+		}).Info("Statistics")
 	}
 
+	// This is what procrastinating RF packetry looks like
+	log.Info("starting LED dance")
 	for _n := 0; _n < 3; _n++ {
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOn)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOn)
-		time.Sleep(100 * time.Millisecond)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOff)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOff)
-		time.Sleep(100 * time.Millisecond)
-
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOn)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOn)
-		time.Sleep(100 * time.Millisecond)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOff)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOff)
+		log.WithFields(log.Fields{"green": "on"}).Debug("step")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+		log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
 		time.Sleep(100 * time.Millisecond)
 
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOn)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOn)
-		time.Sleep(100 * time.Millisecond)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOff)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOff)
+		log.WithFields(log.Fields{"green": "off"}).Debug("step")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+		log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
 		time.Sleep(100 * time.Millisecond)
 
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOn)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOn)
+		log.WithFields(log.Fields{"blue": "on"}).Debug("step")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+		log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
 		time.Sleep(100 * time.Millisecond)
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDModeOff)
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDModeOff)
+
+		log.WithFields(log.Fields{"green": "off"}).Debug("step")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+		log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+		time.Sleep(100 * time.Millisecond)
+
+		log.WithFields(log.Fields{"green": "on"}).Debug("step")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+		log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+		time.Sleep(100 * time.Millisecond)
+
+		log.WithFields(log.Fields{"blue": "off"}).Debug("step")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+		log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+		time.Sleep(100 * time.Millisecond)
+
+		log.WithFields(log.Fields{"blue": "on"}).Debug("step")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+		log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+		time.Sleep(100 * time.Millisecond)
+
+		log.WithFields(log.Fields{"blue": "off"}).Debug("step")
+		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+		log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
+		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
 		time.Sleep(100 * time.Millisecond)
 	}
 
