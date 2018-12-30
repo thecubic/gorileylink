@@ -27,6 +27,7 @@ var (
 	err           error
 	rileylink     *gorileylink.ConnectedRileyLink
 	batteryLevel  int
+	rssi          int
 	customName    string
 	version       string
 )
@@ -75,7 +76,9 @@ func main() {
 		fmt.Printf("couldn't get version: %v\n", err)
 	}
 
-	fmt.Printf("%v @ %v: %v %v %v%%\n", nameoraddress, blec.Address().String(), customName, version, batteryLevel)
+	rssi = rileylink.ReadRSSI()
+
+	fmt.Printf("%v @ %v (%v dBm): %v %v %v%%\n", nameoraddress, blec.Address().String(), rssi, customName, version, batteryLevel)
 
 	// disconnect from rileylink
 	blec.CancelConnection()

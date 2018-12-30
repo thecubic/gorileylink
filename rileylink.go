@@ -1,11 +1,171 @@
+// rileylink.go contains the application-layer specifics of the device
+
 package gorileylink
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
+	"time"
+
+	"github.com/currantlabs/ble"
 )
 
-// BatteryLevel retrieves an approximated battery percentage from the device
+// ConnectedRileyLink represents a BLE connection to a rileylink
+type ConnectedRileyLink struct {
+	client       ble.Client
+	batterySvc   *ble.Service
+	batteryChr   *ble.Characteristic
+	rileyLinkSvc *ble.Service
+	dataChr      *ble.Characteristic
+	// notifier
+	respCountChr        *ble.Characteristic
+	respCountClientDesc *ble.Descriptor
+	timerTickChr        *ble.Characteristic
+	customNameChr       *ble.Characteristic
+	versionChr          *ble.Characteristic
+	ledModeChr          *ble.Characteristic
+	rawResponse         chan []byte
+	response            chan RLCCResponse
+	notifier            chan int
+}
+
+// AttachBTLE creates a connection descriptor for a rileylink based on input
+// of a legitimate BLE-layer connected device.  It will fail if you give it
+// a BT speaker or whatever
+// Effectively the constructor
+func AttachBTLE(blec ble.Client) (*ConnectedRileyLink, error) {
+	var (
+		err                  error
+		batterySvcP          *ble.Service
+		batteryChrP          *ble.Characteristic
+		rileyLinkSvcP        *ble.Service
+		dataChrP             *ble.Characteristic
+		respCountChrP        *ble.Characteristic
+		respCountClientDescP *ble.Descriptor
+		timerTickChrP        *ble.Characteristic
+		customNameChrP       *ble.Characteristic
+		versionChrP          *ble.Characteristic
+		ledModeChrP          *ble.Characteristic
+	)
+	blep, err := blec.DiscoverProfile(true)
+	if err != nil {
+		log.Fatalf("couldn't fetch BLE profile")
+	}
+
+	for _, s := range blep.Services {
+		if s.UUID.Equal(ble.UUID16(0x180F)) {
+			batterySvcP = s
+			for _, c := range s.Characteristics {
+				if c.UUID.Equal(ble.UUID16(0x2a19)) {
+					batteryChrP = c
+				}
+			}
+		} else if s.UUID.Equal(rileyLinkSvc) {
+			rileyLinkSvcP = s
+			for _, c := range s.Characteristics {
+				if c.UUID.Equal(dataChr) {
+					dataChrP = c
+				} else if c.UUID.Equal(respCountChr) {
+					respCountChrP = c
+					for _, d := range c.Descriptors {
+						if d.UUID.Equal(ble.UUID16(0x2902)) {
+							respCountClientDescP = d
+						}
+					}
+				} else if c.UUID.Equal(timerTickChr) {
+					timerTickChrP = c
+				} else if c.UUID.Equal(customNameChr) {
+					customNameChrP = c
+				} else if c.UUID.Equal(versionChr) {
+					versionChrP = c
+				} else if c.UUID.Equal(ledModeChr) {
+					ledModeChrP = c
+				}
+			}
+		}
+	}
+
+	if batterySvcP == nil {
+		return nil, fmt.Errorf("batterySvc missing")
+	} else if batteryChrP == nil {
+		return nil, fmt.Errorf("batteryChr missing")
+	} else if rileyLinkSvcP == nil {
+		return nil, fmt.Errorf("rileyLinkSvc missing")
+	} else if dataChrP == nil {
+		return nil, fmt.Errorf("dataChr missing")
+	} else if respCountChrP == nil {
+		return nil, fmt.Errorf("respCountChr missing")
+	} else if timerTickChrP == nil {
+		return nil, fmt.Errorf("timerTickChr missing")
+	} else if customNameChrP == nil {
+		return nil, fmt.Errorf("customNameChr missing")
+	} else if versionChrP == nil {
+		return nil, fmt.Errorf("versionChr missing")
+	} else if ledModeChrP == nil {
+		return nil, fmt.Errorf("ledModeChr missing")
+	}
+
+	// yep
+	return &ConnectedRileyLink{
+		blec,
+		batterySvcP,
+		batteryChrP,
+		rileyLinkSvcP,
+		dataChrP,
+		respCountChrP,
+		respCountClientDescP,
+		timerTickChrP,
+		customNameChrP,
+		versionChrP,
+		ledModeChrP,
+		make(chan []byte),
+		make(chan RLCCResponse),
+		make(chan int),
+	}, nil
+}
+
+// func (crl *ConnectedRileyLink)
+
+// there are two RPC layers to a RileyLink; the BLE113 and the CC1110
+// connected to it via SPI.  These run different firmwares; the BLE
+// firmware is "ble_rfspy" and is effectively the supervising chip
+// and is interacted with directly via GATT characteristics
+// The CC1110 firmware is "subg_rfspy" and is interacted with over a
+// GATT call-and-response scheme
+
+// ReadRSSI [local] just exposes the underlying call
+func (crl *ConnectedRileyLink) ReadRSSI() int {
+	return crl.client.ReadRSSI()
+}
+
+// NotifySubscribe [local] wires a function as a callback to the data notifier
+func (crl *ConnectedRileyLink) NotifySubscribe() error {
+	var (
+		err error
+	)
+	// prepare ourselves for notification
+	err = crl.client.Subscribe(crl.respCountChr, false, crl.notifyRespCallback)
+	if err != nil {
+		log.Fatalf("local subscribe failed: %s", err)
+	}
+	// tell the device to notify us, m'kay
+	err = crl.client.WriteDescriptor(crl.respCountClientDesc, enableNotificationValue)
+	if err != nil {
+		log.Fatalf("remote notify failed: %s", err)
+	}
+	return err
+}
+
+// notifyRespCallback is a simple callback to convert BLE notification
+// events into application channel notification events
+// such that a reciever knows it now should read data
+func (crl *ConnectedRileyLink) notifyRespCallback(dumpval []byte) {
+	// NOTE: reading the characteristic here does not work
+	crl.notifier <- int(dumpval[0])
+}
+
+// BatteryLevel [BLE] retrieves an approximated battery percentage from the device
 func (crl *ConnectedRileyLink) BatteryLevel() (int, error) {
 	var (
 		data []byte
@@ -18,7 +178,7 @@ func (crl *ConnectedRileyLink) BatteryLevel() (int, error) {
 	return int(data[0]), nil
 }
 
-// GetCustomName returns the device's name set by the user
+// GetCustomName [BLE] returns the device's name set by the user
 func (crl *ConnectedRileyLink) GetCustomName() (string, error) {
 	var (
 		data []byte
@@ -31,7 +191,7 @@ func (crl *ConnectedRileyLink) GetCustomName() (string, error) {
 	return string(data), nil
 }
 
-// SetCustomName pushes a new name to the device
+// SetCustomName [BLE] pushes a new name to the device
 func (crl *ConnectedRileyLink) SetCustomName(newname string) error {
 	var (
 		data []byte
@@ -42,7 +202,7 @@ func (crl *ConnectedRileyLink) SetCustomName(newname string) error {
 	return err
 }
 
-// GetLEDMode retrieves the mode of the diagnostic LEDs (blue)
+// GetLEDMode [BLE] retrieves the mode of the diagnostic LEDs (blue)
 func (crl *ConnectedRileyLink) GetLEDMode() (LEDMode, error) {
 	var (
 		err  error
@@ -56,7 +216,7 @@ func (crl *ConnectedRileyLink) GetLEDMode() (LEDMode, error) {
 	return mode, err
 }
 
-// SetLEDMode switches the mode of the diagnostic LEDs (blue)
+// SetLEDMode [BLE] switches the mode of the diagnostic LEDs (blue)
 func (crl *ConnectedRileyLink) SetLEDMode(mode LEDMode) error {
 	var (
 		err error
@@ -65,7 +225,7 @@ func (crl *ConnectedRileyLink) SetLEDMode(mode LEDMode) error {
 	return err
 }
 
-// Version returns the BLE firmware revision on the device
+// Version [BLE] returns the BLE firmware revision on the device
 func (crl *ConnectedRileyLink) Version() (string, error) {
 	var (
 		data []byte
@@ -78,106 +238,199 @@ func (crl *ConnectedRileyLink) Version() (string, error) {
 	return string(data), nil
 }
 
-func (crl *ConnectedRileyLink) GetState() error {
+// RLCCResponse represents a return from the CC chip
+type RLCCResponse struct {
+	result  RileyLinkCCResponseType
+	payload []byte
+	rssi    int
+}
+
+// writeCCPacket [CC] pushes an application packet to the CC chip
+func (crl *ConnectedRileyLink) writeCCPacket(packet []byte) error {
+	var lenpluspacket []byte
+	lenpluspacket = make([]byte, len(packet)+1)
+	lenpluspacket[0] = byte(len(packet))
+	copy(lenpluspacket[1:], packet)
+	// fmt.Printf("sending: %v", lenpluspacket)
+	return crl.client.WriteCharacteristic(crl.dataChr, lenpluspacket, false)
+}
+
+// commandCC is just a conveience function for wrapping CC commands
+func (crl *ConnectedRileyLink) commandCC(cmd RileyLinkCommand) (*RLCCResponse, error) {
+	err := crl.writeCCPacket([]byte{byte(cmd)})
+	if err != nil {
+		return nil, err
+	}
+	<-crl.notifier
+	return crl.readResponse()
+}
+
+// resetCC is just a conveience function for the oneway
+func (crl *ConnectedRileyLink) resetCC() error {
+	return crl.writeCCPacket([]byte{byte(RLCReset)})
+}
+
+func (crl *ConnectedRileyLink) payloadCommandCC(cmd RileyLinkCommand, payload []byte) (*RLCCResponse, error) {
+	var fullpacket []byte
+	fullpacket = make([]byte, len(payload)+1)
+	fullpacket[0] = byte(cmd)
+	copy(fullpacket[1:], payload)
+	err := crl.writeCCPacket(fullpacket)
+	if err != nil {
+		return nil, err
+	}
+	<-crl.notifier
+	return crl.readResponse()
+}
+
+func (crl *ConnectedRileyLink) readResponse() (*RLCCResponse, error) {
+	// fmt.Printf("notified of response number %v\n", respSer)
+	respPayload, err := crl.client.ReadCharacteristic(crl.dataChr)
+	// fmt.Printf("response payload: %v\n", respPayload)
+	response := &RLCCResponse{
+		RileyLinkCCResponseType(respPayload[0]),
+		make([]byte, len(respPayload)-1),
+		crl.client.ReadRSSI()}
+	copy(response.payload, respPayload[1:])
+	return response, err
+}
+
+// see https://github.com/ps2/subg_rfspy/blob/master/protocol.md
+
+// Interrupt [CC] is, like, stop what you're doing
+func (crl *ConnectedRileyLink) Interrupt() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCGetState)}, true)
+	_, err = crl.commandCC(RLCInterrupt)
 	return err
 }
 
-func (crl *ConnectedRileyLink) GetVersion() error {
-	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCGetVersion)}, true)
-	return err
+// GetState [CC] is an internal diagnostic call
+func (crl *ConnectedRileyLink) GetState() (bool, error) {
+	response, err := crl.commandCC(RLCGetState)
+	if err != nil {
+		return false, err
+	} else if response.result != RLRSuccess {
+		return false, fmt.Errorf("Bad result: %v", response.result)
+	} else if string(response.payload) != "OK" {
+		return false, fmt.Errorf("Not OK: %v", string(response.payload))
+	}
+	return true, err
 }
 
+// GetRadioVersion [CC] returns the version of the CC firmware
+func (crl *ConnectedRileyLink) GetRadioVersion() (string, error) {
+	response, err := crl.commandCC(RLCGetVersion)
+	if response.result != RLRSuccess {
+		return "", fmt.Errorf("Bad result: %v", response.result)
+	}
+	return string(response.payload), err
+}
+
+// GetPacket [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) GetPacket() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCGetPacket)}, true)
+	_, err = crl.commandCC(RLCGetPacket)
 	return err
 }
 
+// SendPacket [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) SendPacket() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCSendPacket)}, true)
+	_, err = crl.commandCC(RLCSendPacket)
 	return err
 }
 
+// SendAndListen [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) SendAndListen() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCSendAndListen)}, true)
+	_, err = crl.commandCC(RLCSendAndListen)
 	return err
 }
 
+// UpdateRegister [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) UpdateRegister() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCUpdateRegister)}, true)
+	_, err = crl.commandCC(RLCUpdateRegister)
 	return err
 }
 
-func (crl *ConnectedRileyLink) Reset() error {
+// RawReset [CC] resets the CC chip and that's that
+func (crl *ConnectedRileyLink) RawReset() error {
+	return crl.resetCC()
+}
+
+// Reset [CC] resets the CC chip, and returns a state call after 100ms
+func (crl *ConnectedRileyLink) Reset() (bool, error) {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCReset)}, true)
+	err = crl.RawReset()
+	if err != nil {
+		return false, err
+	}
+	// wait for 100ms for the CC to reset
+	time.Sleep(100 * time.Millisecond)
+	return crl.GetState()
+}
+
+// LED [CC] does a thing that will be documented at some point
+func (crl *ConnectedRileyLink) LED(ledc LEDColor, ledm LEDMode) error {
+	response, err := crl.payloadCommandCC(RLCLED, []byte{byte(ledc), byte(ledm)})
+	if response.result != RLRSuccess {
+		return fmt.Errorf("Bad result: %v", response.result)
+	}
 	return err
 }
 
-func (crl *ConnectedRileyLink) LED() error {
-	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCLED)}, true)
-	return err
-}
-
+// ReadRegister [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) ReadRegister() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCReadRegister)}, true)
+	_, err = crl.commandCC(RLCReadRegister)
 	return err
 }
 
+// SetModeRegisters [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) SetModeRegisters() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCSetModeRegisters)}, true)
+	_, err = crl.commandCC(RLCSetModeRegisters)
 	return err
 }
 
+// SetSWEncoding [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) SetSWEncoding() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCSetSWEncoding)}, true)
+	_, err = crl.commandCC(RLCSetSWEncoding)
 	return err
 }
 
+// SetPreamble [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) SetPreamble() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCSetPreamble)}, true)
+	_, err = crl.commandCC(RLCSetPreamble)
 	return err
 }
 
+// ResetRadioConfig [CC] does a thing that will be documented at some point
 func (crl *ConnectedRileyLink) ResetRadioConfig() error {
 	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCResetRadioConfig)}, true)
+	_, err = crl.commandCC(RLCResetRadioConfig)
+
 	return err
 }
 
-func (crl *ConnectedRileyLink) GetStatistics() error {
-	var err error
-	err = crl.client.WriteCharacteristic(crl.dataChr, []byte{byte(RLCGetStatistics)}, true)
-	return err
-}
-
-// NotifySubscribe wires a function as a callback to the data notifier
-func (crl *ConnectedRileyLink) NotifySubscribe() error {
-	var err error
-	if err = crl.client.Subscribe(crl.respCountChr, true, crl.notifyRespCallback); err != nil {
-		log.Fatalf("subscribe failed: %s", err)
+// GetStatistics [CC] does a thing that will be documented at some point
+func (crl *ConnectedRileyLink) GetStatistics() (*RileyLinkStatistics, error) {
+	response, err := crl.commandCC(RLCGetStatistics)
+	if err != nil {
+		return nil, err
+	} else if response.result != RLRSuccess {
+		return nil, fmt.Errorf("Bad result: %v", response.result)
 	}
-	//if err = crl.client.Subscribe(crl.dataChr, false, crl.notifyDataCallback); err != nil {
-	//	log.Fatalf("subscribe failed: %s", err)
-	//}
-	return err
-}
-
-func (crl *ConnectedRileyLink) notifyRespCallback(req []byte) {
-	fmt.Printf("notifiedResp: %v\n", req)
-}
-
-func (crl *ConnectedRileyLink) notifyDataCallback(req []byte) {
-	fmt.Printf("notifiedData: %v\n", req)
+	return &RileyLinkStatistics{
+		time.Duration(binary.BigEndian.Uint32(response.payload[0:4])) * time.Millisecond,
+		binary.BigEndian.Uint16(response.payload[4:6]),
+		binary.BigEndian.Uint16(response.payload[6:8]),
+		binary.BigEndian.Uint16(response.payload[8:10]),
+		binary.BigEndian.Uint16(response.payload[10:12]),
+		binary.BigEndian.Uint16(response.payload[12:14]),
+		binary.BigEndian.Uint16(response.payload[14:16]),
+	}, err
 }
