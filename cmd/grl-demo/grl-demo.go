@@ -1,5 +1,4 @@
-// grl-subs: WIP: buildup of subscription-based GATT RPC channel
-// nope, it does not work yet
+// grl-demo: interacting demo of CC commands (working)
 
 package main
 
