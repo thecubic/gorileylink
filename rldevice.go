@@ -55,9 +55,14 @@ func (ledc LEDColor) String() string {
 type RileyLinkCommand byte
 
 const (
-	RLCInterrupt        RileyLinkCommand = 0x00
-	RLCGetState         RileyLinkCommand = 0x01
-	RLCGetVersion       RileyLinkCommand = 0x02
+	// RLCInterrupt just pushes a null command out, effectively
+	// interrupting another command in progress
+	RLCInterrupt RileyLinkCommand = 0x00
+	// RLCGetState returns "OK" when the CC chip is ... OK
+	RLCGetState RileyLinkCommand = 0x01
+	// RLCGetVersion returns the version of the CC firmware (subg_rfspy)
+	RLCGetVersion RileyLinkCommand = 0x02
+
 	RLCGetPacket        RileyLinkCommand = 0x03
 	RLCSendPacket       RileyLinkCommand = 0x04
 	RLCSendAndListen    RileyLinkCommand = 0x05
@@ -71,6 +76,43 @@ const (
 	RLCResetRadioConfig RileyLinkCommand = 0x0D
 	RLCGetStatistics    RileyLinkCommand = 0x0E
 )
+
+func (rlc RileyLinkCommand) String() string {
+	switch rlc {
+	case RLCInterrupt:
+		return "RLCInterrupt"
+	case RLCGetState:
+		return "RLCGetState"
+	case RLCGetVersion:
+		return "RLCGetVersion"
+	case RLCGetPacket:
+		return "RLCGetPacket"
+	case RLCSendPacket:
+		return "RLCSendPacket"
+	case RLCSendAndListen:
+		return "RLCSendAndListen"
+	case RLCUpdateRegister:
+		return "RLCUpdateRegister"
+	case RLCReset:
+		return "RLCReset"
+	case RLCLED:
+		return "RLCLED"
+	case RLCReadRegister:
+		return "RLCReadRegister"
+	case RLCSetModeRegisters:
+		return "RLCSetModeRegisters"
+	case RLCSetSWEncoding:
+		return "RLCSetSWEncoding"
+	case RLCSetPreamble:
+		return "RLCSetPreamble"
+	case RLCResetRadioConfig:
+		return "RLCResetRadioConfig"
+	case RLCGetStatistics:
+		return "RLCGetStatistics"
+	default:
+		return "RileyLinkCommandUNKNOWN"
+	}
+}
 
 // RileyLinkCCResponseType represents the outcome of the sent command
 type RileyLinkCCResponseType byte
@@ -107,9 +149,20 @@ func (rlr RileyLinkCCResponseType) String() string {
 type RileyLinkPacketChannel byte
 
 const (
-	RLPCCGM  RileyLinkPacketChannel = 0x01
-	RLPCPUMP RileyLinkPacketChannel = 0x02
+	RLPCMeter RileyLinkPacketChannel = 0x01
+	RLPCPump  RileyLinkPacketChannel = 0x02
 )
+
+func (rlpc RileyLinkPacketChannel) String() string {
+	switch rlpc {
+	case RLPCMeter:
+		return "RLPCMeter"
+	case RLPCPump:
+		return "RLPCPump"
+	default:
+		return "RileyLinkPacketChannelUNKNOWN"
+	}
+}
 
 // RileyLinkStatistics represents a concrete statistics pull event
 type RileyLinkStatistics struct {

@@ -89,9 +89,7 @@ func main() {
 
 	err = rileylink.NotifySubscribe()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Fatal("BLE Subscription Failed")
+		log.WithField("err", err).Fatal("BLE Subscription Failed")
 	} else {
 		log.Debug("BLE Subscription Successful")
 	}
@@ -100,9 +98,7 @@ func main() {
 
 	batteryLevel, err = rileylink.GetBatteryLevel()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("Battery Level Error")
+		log.WithField("err", err).Error("Battery Level Error")
 	} else {
 		log.WithFields(log.Fields{
 			"batteryLevel": batteryLevel,
@@ -111,9 +107,7 @@ func main() {
 
 	customName, err = rileylink.GetCustomName()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("Custom Name Error")
+		log.WithField("err", err).Error("Custom Name Error")
 	} else {
 		log.WithFields(log.Fields{
 			"customName": customName,
@@ -122,9 +116,7 @@ func main() {
 
 	bleversion, err = rileylink.GetBLEVersion()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("BLE Version Error")
+		log.WithField("err", err).Error("BLE Version Error")
 	} else {
 		log.WithFields(log.Fields{
 			"bleversion": bleversion,
@@ -135,17 +127,13 @@ func main() {
 
 	ok, err = rileylink.GetState()
 	if ok {
-		log.Info("State: OK")
+		log.WithField("state", "OK").Info("State")
 	} else {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("State: Bad")
+		log.WithField("err", err).Error("State: Bad")
 	}
 	radioversion, err := rileylink.GetRadioVersion()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("Radio Version Error")
+		log.WithField("err", err).Error("Radio Version Error")
 	} else {
 		log.WithFields(log.Fields{
 			"radioversion": radioversion,
@@ -154,9 +142,7 @@ func main() {
 
 	stats, err := rileylink.GetStatistics()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Error("Statistics Error")
+		log.WithField("err", err).Error("Statistics Error")
 	} else {
 		log.WithFields(log.Fields{
 			"collected":         stats.Collected,
@@ -170,57 +156,57 @@ func main() {
 		}).Info("Statistics")
 	}
 
-	// This is what procrastinating RF packetry looks like
-	log.Info("starting LED dance")
-	for _n := 0; _n < 3; _n++ {
-		log.WithFields(log.Fields{"green": "on"}).Debug("step")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
-		log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
-		time.Sleep(100 * time.Millisecond)
+	// // This is what procrastinating RF packetry looks like
+	// log.Info("starting LED dance")
+	// for _n := 0; _n < 3; _n++ {
+	// 	log.WithFields(log.Fields{"green": "on"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+	// 	log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"green": "off"}).Debug("step")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
-		log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"green": "off"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+	// 	log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"blue": "on"}).Debug("step")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
-		log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"blue": "on"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+	// 	log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"green": "off"}).Debug("step")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
-		log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"green": "off"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+	// 	log.WithFields(log.Fields{"blue": "off"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"green": "on"}).Debug("step")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
-		log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"green": "on"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+	// 	log.WithFields(log.Fields{"blue": "on"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"blue": "off"}).Debug("step")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
-		log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"blue": "off"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+	// 	log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"blue": "on"}).Debug("step")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
-		log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
-		time.Sleep(100 * time.Millisecond)
+	// 	log.WithFields(log.Fields{"blue": "on"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOn)
+	// 	log.WithFields(log.Fields{"green": "on"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOn)
+	// 	time.Sleep(100 * time.Millisecond)
 
-		log.WithFields(log.Fields{"blue": "off"}).Debug("step")
-		rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
-		log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
-		rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
-		time.Sleep(100 * time.Millisecond)
-	}
+	// 	log.WithFields(log.Fields{"blue": "off"}).Debug("step")
+	// 	rileylink.LED(gorileylink.LEDBlue, gorileylink.LEDOff)
+	// 	log.WithFields(log.Fields{"green": "off"}).Debug("step + wait")
+	// 	rileylink.LED(gorileylink.LEDGreen, gorileylink.LEDOff)
+	// 	time.Sleep(100 * time.Millisecond)
+	// }
 
 	// TODO: not working
 	// ok, err = rileylink.Reset()

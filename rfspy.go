@@ -1,4 +1,10 @@
+// rfspy.go contains the CC-layer code for making RF okay again
+
 package gorileylink
+
+import (
+	log "github.com/sirupsen/logrus"
+)
 
 type RxFilter byte
 
@@ -41,4 +47,71 @@ const (
 	RegisterTest1      CxRegister = 0x24
 	RegisterTest0      CxRegister = 0x25
 	RegisterPaTable0   CxRegister = 0x2e
+	// 24MHz crystal
+	OscillatorHz = 24000000
 )
+
+// GetFrequency returns the radio's current tuning in Hz (from Kenneth)
+func (crl *ConnectedRileyLink) GetFrequency() (uint32, error) {
+	var (
+		frequency uint32 = 0
+		value     byte
+		err       error
+	)
+
+	log.Debug("reading FREQ2")
+	value, err = crl.ReadRegister(RegisterFreq2)
+	if err != nil {
+		return 0, err
+	}
+	frequency += uint32(value) << 16
+
+	log.Debug("reading FREQ1")
+	value, err = crl.ReadRegister(RegisterFreq1)
+	if err != nil {
+		return 0, err
+	}
+	frequency += uint32(value) << 8
+
+	log.Debug("reading FREQ0")
+	value, err = crl.ReadRegister(RegisterFreq0)
+	if err != nil {
+		return 0, err
+	}
+	frequency += uint32(value)
+
+	// oscillator multiplier
+	frequency = uint32(uint64(frequency) * OscillatorHz >> 16)
+
+	return frequency, nil
+}
+
+// SetFrequency tells the CC to tune to a specific frequency
+func (crl *ConnectedRileyLink) SetFrequency(freq uint32) error {
+	var err error
+	// oscilator multiplier
+	freqcal := (uint64(freq)<<16 + OscillatorHz/2) / OscillatorHz
+
+	freq2 := byte(freqcal >> 16)
+	log.WithField("freq2", freq2).Debug("writing FREQ2")
+	err = crl.WriteRegister(RegisterFreq2, freq2)
+	if err != nil {
+		return err
+	}
+
+	freq1 := byte(freqcal >> 8)
+	log.WithField("freq1", freq1).Debug("writing FREQ1")
+	err = crl.WriteRegister(RegisterFreq1, freq1)
+	if err != nil {
+		return err
+	}
+
+	freq0 := byte(freqcal)
+	log.WithField("freq0", freq0).Debug("writing FREQ0")
+	err = crl.WriteRegister(RegisterFreq0, freq0)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
